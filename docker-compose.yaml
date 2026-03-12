@@ -1,0 +1,23 @@
+services:
+  iopaint:
+    image: iopaint-rocm:latest
+    container_name: iopaint-rocm
+    # ROCm requires access to these devices for GPU acceleration
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+    # Essential for RX 6000 series (gfx1030) compatibility
+    environment:
+      - HSA_OVERRIDE_GFX_VERSION=10.3.0
+      # Optional: set timezone to ensure logs match your local time
+      - TZ=UTC 
+    ports:
+      - "8080:8080"
+    volumes:
+      # Change these paths to absolute paths if deploying via Portainer 
+      # to ensure they map to the correct location on your LXC host.
+      - /opt/iopaint/models:/root/.cache
+      - /opt/iopaint/outputs:/app/outputs
+    restart: unless-stopped
+    # We use --device cuda because ROCm's torch presents the GPU as 'cuda'
+    command: iopaint start --model=lama --device=cuda --port=8080 --host=0.0.0.0
