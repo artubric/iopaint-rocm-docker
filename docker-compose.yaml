@@ -1,23 +1,51 @@
 services:
   iopaint:
-    image: iopaint-rocm:latest
-    container_name: iopaint-rocm
-    # ROCm requires access to these devices for GPU acceleration
-    devices:
-      - /dev/kfd:/dev/kfd
-      - /dev/dri:/dev/dri
-    # Essential for RX 6000 series (gfx1030) compatibility
-    environment:
-      - HSA_OVERRIDE_GFX_VERSION=10.3.0
-      # Optional: set timezone to ensure logs match your local time
-      - TZ=UTC 
-    ports:
-      - "8080:8080"
-    volumes:
-      # Change these paths to absolute paths if deploying via Portainer 
-      # to ensure they map to the correct location on your LXC host.
-      - /opt/iopaint/models:/root/.cache
-      - /opt/iopaint/outputs:/app/outputs
-    restart: unless-stopped
-    # We use --device cuda because ROCm's torch presents the GPU as 'cuda'
-    command: iopaint start --model=lama --device=cuda --port=8080 --host=0.0.0.0
+    services:
+      iopaint:
+        image: iopaint-rocm:1.6.0
+        container_name: iopaint-rocm
+        # ROCm requires access to these devices for GPU acceleration
+        devices:
+          - /dev/kfd:/dev/kfd
+          - /dev/dri:/dev/dri
+        # Essential for RX 6000 series (gfx1030) compatibility
+        environment:
+          - HSA_OVERRIDE_GFX_VERSION=10.3.0
+          - TZ="Europe/Riga"
+          # Optimize ROCm memory allocation to prevent fragmentation
+          - PYTORCH_HIP_ALLOC_CONF=expandable_segments:True
+        ports:
+          - "8080:8080"
+        volumes:
+          # Specific paths for faster access on your LXC host
+          - /opt/docker-configs-fast/lamacleaner/.cache/torch:/root/.cache/torch
+          - /opt/docker-configs-fast/lamacleaner/.cache/huggingface:/root/.cache/huggingface
+          - /opt/docker-configs-fast/lamacleaner/outputs:/app/outputs
+          - /opt/docker-configs-fast/lamacleaner/inputs:/app/inputs
+        restart: unless-stopped
+        # Use our monkey-patched entrypoint to fix ROCm attention crash
+        command:
+          - python3
+          - /app/entrypoint.py
+          - start
+          - --model=runwayml/stable-diffusion-inpainting
+          - --device=cuda
+          - --port=8080
+          - --host=0.0.0.0
+          - --input=/app/inputs
+          - --output-dir=/app/outputs
+          - --low-mem
+          - --cpu-offload
+          - --cpu-textencoder
+          - --disable-nsfw-checker
+          - --enable-interactive-seg
+          - --interactive-seg-model=sam2_base
+          - --interactive-seg-device=cuda
+          - --enable-remove-bg
+          - --remove-bg-device=cuda
+          - --enable-gfpgan
+          - --gfpgan-device=cuda
+          - --enable-realesrgan
+          - --realesrgan-device=cuda
+
+

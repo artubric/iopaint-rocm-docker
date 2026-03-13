@@ -1,42 +1,55 @@
 ARG PLATFORM=linux/amd64
-FROM --platform=${PLATFORM} rocm/pytorch:rocm7.1.1_ubuntu22.04_py3.11_pytorch_release_2.10.0
+FROM --platform=${PLATFORM} ubuntu:22.04
 
 # Set environment variables
 ENV DEBIAN_FRONTEND=noninteractive
 ENV HSA_OVERRIDE_GFX_VERSION=10.3.0
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
+ENV PATH="/usr/local/bin:$PATH"
 
-# Install system dependencies
+# Install minimal system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    software-properties-common \
-    libsm6 libxext6 ffmpeg libfontconfig1 libxrender1 libgl1-mesa-glx \
+    python3-pip \
+    python3-dev \
+    libgl1-mesa-glx \
     libglib2.0-0 \
-    curl python3-pip git \
+    libgomp1 \
+    libsm6 \
+    libxext6 \
+    libxrender1 \
+    ffmpeg \
+    wget \
+    git \
+    ca-certificates \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Upgrade pip only
+# Upgrade pip
 RUN pip3 install --no-cache-dir --upgrade pip
 
 WORKDIR /app
 
-# Copy the entire project
-COPY . .
+# Install PyTorch with ROCm 6.2 support (Latest stable for RX 6000/7000/7900)
+# This installs only the runtime libraries, skipping the massive dev tools.
+RUN pip3 install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm6.2
 
-# Install IOPaint and its dependencies 
-# We filter out torch/torchvision to keep the optimized ones from the base image
-RUN grep -vE "torch|torchvision" requirements.txt > requirements_no_torch.txt && \
-    pip3 install --no-cache-dir -r requirements_no_torch.txt && \
-    pip3 install --no-cache-dir .
+# Install IOPaint (includes web UI)
+RUN pip3 install --no-cache-dir iopaint
 
 # Pre-install plugins package
 RUN iopaint install-plugins-packages
 
-# Create a directory for models and outputs
-RUN mkdir -p /root/.cache /app/outputs
+# Create cache directories for models and outputs
+RUN mkdir -p /root/.cache /app/outputs /app/inputs
+
+# Copy the custom entrypoint script (fixes ROCm attention crash)
+COPY docker/entrypoint.py /app/entrypoint.py
 
 EXPOSE 8080
 
-# Default command to start IOPaint with LaMa on GPU
+# Default command
 # We use --device cuda because ROCm's torch presents the GPU as 'cuda'
-CMD ["iopaint", "start", "--model=lama", "--device=cuda", "--port=8080", "--host=0.0.0.0", "--input", "assets/dog.jpg"]
+# We set --input to /app/inputs so the web UI acts as a file manager for that folder.
+# We set --output-dir to /app/outputs so saved results go there.
+# Use our monkey-patched entrypoint instead of 'iopaint' directly
+CMD ["python3", "entrypoint.py", "start", "--model=lama", "--device=cuda", "--port=8080", "--host=0.0.0.0", "--input", "/app/inputs", "--output-dir", "/app/outputs"]

@@ -18,7 +18,7 @@ build:
 		-t $(IMAGE_NAME):$(TAG) \
 		-t $(IMAGE_NAME):latest \
 		-f docker/ROCmDockerfile \
-		./IOPaint --load
+		. --load
 
 export:
 	@echo "Exporting image to $(EXPORT_FILE)..."
